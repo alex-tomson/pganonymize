@@ -9,9 +9,9 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+venv/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -62,3 +62,7 @@ target/
 # IDEs
 .idea/
 .vscode/
+
+# Dev files
+test_schema.yml
+test_schema2.yml

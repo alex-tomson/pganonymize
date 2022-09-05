@@ -1,22 +1,23 @@
-tables:
- - auth_user:
-    primary_key: id
-    chunk_size: 5000
-    fields:
-     - first_name:
-        provider:
-          name: fake.first_name
-     - last_name:
-        provider:
-          name: set
-          value: "Bar"
-     - email:
-        provider:
-          name: md5
-        append: "@localhost"
-    excludes:
-      - email:
-        - "\\S[^@]*@example\\.com"
+db:
+  tables:
+   - auth_user:
+      primary_key: id
+      chunk_size: 5000
+      fields:
+       - first_name:
+          provider:
+            name: fake.first_name
+       - last_name:
+          provider:
+            name: set
+            value: "Bar"
+       - email:
+          provider:
+            name: md5
+          append: "@localhost"
+      excludes:
+        - email:
+          - "\\S[^@]*@example\\.com"
 
-truncate:
-  - django_session
+  truncate:
+    - django_session
