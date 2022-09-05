@@ -52,6 +52,7 @@ def get_arg_parser():
 
 def main(args):
     """Main method"""
+    start_exec_time = time.time()
 
     loglevel = logging.WARNING
     if args.verbose:
@@ -62,26 +63,36 @@ def main(args):
         list_provider_classes()
         return 0
 
-    schema = load_config(args.schema)
+    schemas = load_config(args.schema)
+    for schema_name, tables in schemas.items():
+        print(tables.get('truncate', []))
+        pg_args = get_pg_args(args)
+        connection = get_connection(pg_args)
 
-    pg_args = get_pg_args(args)
-    connection = get_connection(pg_args)
-    if args.init_sql:
+        switch_to_schema = f"SET search_path TO {schema_name};"
+
         cursor = connection.cursor()
-        logging.info('Executing initialisation sql {}'.format(args.init_sql))
-        cursor.execute(args.init_sql)
+        logging.info('Switching to search_path - {}'.format(schema_name))
+        cursor.execute(switch_to_schema)
+
+        if args.init_sql:
+            logging.info('Executing initialisation sql {}'.format(args.init_sql))
+            cursor.execute(args.init_sql)
+
         cursor.close()
 
-    start_time = time.time()
-    truncate_tables(connection, schema.get('truncate', []))
-    anonymize_tables(connection, schema.get('tables', []), verbose=args.verbose, dry_run=args.dry_run)
+        start_time = time.time()
+        truncate_tables(connection, tables.get('truncate', []))
+        anonymize_tables(connection, tables.get('tables', []), verbose=args.verbose, dry_run=args.dry_run)
 
-    if not args.dry_run:
-        connection.commit()
-    connection.close()
+        if not args.dry_run:
+            connection.commit()
+        connection.close()
 
-    end_time = time.time()
-    logging.info('Anonymization took {:.2f}s'.format(end_time - start_time))
+        end_time = time.time()
+        logging.info('Anonymization of schema_name took {:.2f}s'.format(end_time - start_time))
 
-    if args.dump_file:
-        create_database_dump(args.dump_file, pg_args)
+        if args.dump_file:
+            create_database_dump(args.dump_file, pg_args)
+
+    logging.info('Anonymization took {:.2f}s'.format(time.time() - start_exec_time))
