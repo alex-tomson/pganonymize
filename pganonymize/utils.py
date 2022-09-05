@@ -355,7 +355,7 @@ def nested_set(dic, path, value, delimiter='.'):
     dic[keys[-1]] = value
 
 
-def load_config(schema):
+def load_config(schema: str) -> dict:
     # Original code from here https://gist.github.com/mkaranasou/ba83e25c835a8f7629e34dd7ede01931
     tag = '!ENV'
     pattern = re.compile(r'.*?\${(\w+)}.*?')

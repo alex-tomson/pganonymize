@@ -2,11 +2,13 @@ import operator
 import random
 import re
 from collections import OrderedDict
+from datetime import datetime
 from hashlib import md5
 from uuid import uuid4
 
 from faker import Faker
 
+from pganonymize.encrypting.encrypt_service import EncryptingService
 from pganonymize.exceptions import InvalidProvider, InvalidProviderArgument, ProviderAlreadyRegistered
 
 fake_data = Faker()
@@ -164,3 +166,24 @@ class UUID4Provider(Provider):
 
     def alter_value(self, value):
         return uuid4()
+
+@register('pbkdf2')
+class PBKDF2Provider(Provider):
+    """Provider to encrypt a value with the pbkdf2 algorithm."""
+
+    def alter_value(self, value: str):
+        pbkdf2_passphrase: str = self.kwargs.get('secret', False)
+        if not pbkdf2_passphrase:
+            raise InvalidProviderArgument("attribute \"secret\" of pbkdf2 provider is not set")
+        if pbkdf2_passphrase == 'DA_SECRET_PHRASE':
+            raise InvalidProviderArgument("cannot find environment variable DA_SECRET_PHRASE "
+                                          "check your .env file")
+
+        return EncryptingService(pbkdf2_passphrase).encrypt_function(value)
+
+@register('date_today')
+class DatetimeProvider(Provider):
+    """Provider to set current datetime value."""
+
+    def alter_value(self, value: str):
+        return datetime.now().date()
