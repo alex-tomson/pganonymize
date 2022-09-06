@@ -65,7 +65,6 @@ def main(args):
 
     schemas = load_config(args.schema)
     for schema_name, tables in schemas.items():
-        print(tables.get('truncate', []))
         pg_args = get_pg_args(args)
         connection = get_connection(pg_args)
 
