@@ -1,27 +1,28 @@
-tables:
- - auth_user:
-    primary_key: id
-    chunk_size: 5000
-    fields:
-     - first_name:
-        provider:
-          name: fake.first_name
-     - last_name:
-        provider:
-          name: set
-          value: "Bar"
-     - email:
-        provider:
-          name: md5
-        append: "@localhost"
-     - phone:
-          format: '+65-{pga_value}-55'
-          provider:
-            name: md5
-            as_number: True
-    excludes:
-      - email:
-        - "\\S[^@]*@example\\.com"
+public:    # postgres default schema is 'public'
+  tables:
+    - auth_user:
+        primary_key: id
+        chunk_size: 5000
+        fields:
+          - first_name:
+              provider:
+                name: fake.first_name
+          - last_name:
+              provider:
+                name: set
+                value: "Bar"
+          - email:
+              provider:
+                name: md5
+              append: "@localhost"
+          - phone:
+              format: '+65-{pga_value}-55'
+              provider:
+                name: md5
+                as_number: True
+        excludes:
+          - email:
+              - "\\S[^@]*@example\\.com"
 
-truncate:
-  - django_session
+  truncate:
+    - django_session
