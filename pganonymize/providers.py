@@ -190,7 +190,7 @@ class DatetimeProvider(Provider):
 
 @register('keep')
 class DatetimeProvider(Provider):
-    """Provider to set current datetime value."""
+    """Provider to set value without changes."""
 
     def alter_value(self, value: any):
         return value
