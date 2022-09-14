@@ -68,6 +68,9 @@ def main(args):
         pg_args = get_pg_args(args)
         connection = get_connection(pg_args)
 
+        target_schema = tables.get("target_schema")
+        overwrite_values_in_source_tables = False if target_schema else tables.get("overwrite_values_in_source_tables", False)
+
         switch_to_schema = f"SET search_path TO {schema_name};"
 
         cursor = connection.cursor()
@@ -82,7 +85,14 @@ def main(args):
 
         start_time = time.time()
         truncate_tables(connection, tables.get('truncate', []))
-        anonymize_tables(connection, tables.get('tables', []), verbose=args.verbose, dry_run=args.dry_run)
+        anonymize_tables(
+            connection,
+            tables.get('tables', []),
+            target_schema=target_schema,
+            verbose=args.verbose,
+            dry_run=args.dry_run,
+            overwrite_values_in_source_tables=overwrite_values_in_source_tables
+        )
 
         if not args.dry_run:
             connection.commit()

@@ -22,12 +22,62 @@ from pganonymize.constants import DEFAULT_CHUNK_SIZE, DEFAULT_PRIMARY_KEY
 from pganonymize.providers import provider_registry
 
 
-def anonymize_tables(connection, definitions, verbose=False, dry_run=False):
+def branch(tree, path, value):
+    key = path[0]
+    array_index_match = re.search(r'\[([0-9]+)\]', key)
+
+    if array_index_match:
+        # Get the array index, and remove the match from the key
+        array_index = int(array_index_match[0].replace('[', '').replace(']', ''))
+        key = key.replace(array_index_match[0], '')
+
+        # Prepare the array at the key
+        if key not in tree:
+            tree[key] = []
+        # Prepare the object at the array index
+        if array_index == len(tree[key]):
+            tree[key].append({})
+        # Replace the object at the array index
+        tree[key][array_index] = value if len(path) == 1 else branch(tree[key][array_index], path[1:], value)
+    else:
+        # Prepare the object at the key
+        if key not in tree:
+            tree[key] = {}
+        # Replace the object at the key
+        tree[key] = value if len(path) == 1 else branch(tree[key], path[1:], value)
+
+    return tree
+
+
+def create_dict(attributes):
+    d = {}
+    for path_str in attributes:
+        branch(d, path_str.split('.'), path_str)
+    return d
+
+
+def build_pg_json_object(nested_obj: dict, root_col: str) -> str:
+    cols = []
+    json_build_object = "json_build_object({})"
+    for path in nested_obj:
+        if isinstance(nested_obj[path], str):
+            path_list = nested_obj[path].split('.')
+            tail_path_list = [f"['{item}']" for item in path_list[1:]]
+            cols.append(f"'{path_list[-1]}', {root_col}{''.join(tail_path_list)}")
+        else:
+            cols.append(f"'{path}', {build_pg_json_object(nested_obj[path], root_col)}")
+    return json_build_object.format(", ".join(cols))
+
+
+def anonymize_tables(
+    connection, definitions, target_schema, verbose=False, dry_run=False, overwrite_values_in_source_tables=False
+):
     """
     Anonymize a list of tables according to the schema definition.
 
     :param connection: A database connection instance.
     :param list definitions: A list of table definitions from the YAML schema.
+    :param str target_schema: Target schema where will be created or replaced anonymized table.
     :param bool verbose: Display logging information and a progress bar.
     :param bool dry_run: Script is runnin in dry-run mode, no commit expected.
     """
@@ -42,8 +92,20 @@ def anonymize_tables(connection, definitions, verbose=False, dry_run=False):
         primary_key = table_definition.get('primary_key', DEFAULT_PRIMARY_KEY)
         total_count = get_table_count(connection, table_name, dry_run)
         chunk_size = table_definition.get('chunk_size', DEFAULT_CHUNK_SIZE)
-        build_and_then_import_data(connection, table_name, primary_key, columns, excludes,
-                                   search, total_count, chunk_size, verbose=verbose, dry_run=dry_run)
+        build_and_then_import_data(
+            connection,
+            table_name,
+            primary_key,
+            columns,
+            excludes,
+            search,
+            total_count,
+            chunk_size,
+            target_schema,
+            verbose=verbose,
+            dry_run=dry_run,
+            overwrite_values_in_source_tables=overwrite_values_in_source_tables
+        )
         end_time = time.time()
         logging.info('{} anonymization took {:.2f}s'.format(table_name, end_time - start_time))
 
@@ -61,8 +123,20 @@ def process_row(row, columns, excludes):
         return row
 
 
-def build_and_then_import_data(connection, table, primary_key, columns,
-                               excludes, search, total_count, chunk_size, verbose=False, dry_run=False):
+def build_and_then_import_data(
+    connection,
+    table,
+    primary_key,
+    columns,
+    excludes,
+    search,
+    total_count,
+    chunk_size,
+    target_schema: str,
+    verbose=False,
+    dry_run=False,
+    overwrite_values_in_source_tables=False
+):
     """
     Select all data from a table and return it together with a list of table columns.
 
@@ -74,6 +148,7 @@ def build_and_then_import_data(connection, table, primary_key, columns,
     :param str search: A SQL WHERE (search_condition) to filter and keep only the searched rows.
     :param int total_count: The amount of rows for the current table
     :param int chunk_size: Number of data rows to fetch with the cursor
+    :param str target_schema: Name of the pg schema of target table.
     :param bool verbose: Display logging information and a progress bar.
     :param bool dry_run: Script is running in dry-run mode, no commit expected.
     """
@@ -95,12 +170,14 @@ def build_and_then_import_data(connection, table, primary_key, columns,
         if records:
             data = parmap.map(process_row, records, columns, excludes, pm_pbar=verbose, pm_parallel=False)
             import_data(connection, temp_table, [primary_key] + column_names, filter(None, data))
-    apply_anonymized_data(connection, temp_table, table, primary_key, columns)
-
+    if overwrite_values_in_source_tables:
+        apply_anonymized_data_to_current_table(connection, temp_table, table, primary_key, columns)
+    else:
+        apply_anonymized_data_to_new_table(connection, target_schema, temp_table, table, primary_key, columns)
     cursor.close()
 
 
-def apply_anonymized_data(connection, temp_table, source_table, primary_key, definitions):
+def apply_anonymized_data_to_current_table(connection, temp_table, source_table, primary_key, definitions):
     logging.info('Applying changes on table {}'.format(source_table))
     cursor = connection.cursor()
     create_index_sql = SQL('CREATE INDEX ON {temp_table} ({primary_key})')
@@ -123,6 +200,35 @@ def apply_anonymized_data(connection, temp_table, source_table, primary_key, def
         'WHERE t.{primary_key} = s.{primary_key}'
     ).format(**sql_args)
     cursor.execute(sql.as_string(connection))
+    cursor.close()
+
+
+def apply_anonymized_data_to_new_table(connection, target_schema, temp_table, source_table, primary_key, definitions):
+    logging.info('Applying changes on table {}'.format(source_table))
+    cursor = connection.cursor()
+
+    column_names = get_column_names(definitions, True)
+    nested_column_names = list(filter(lambda col: '.' in col, column_names))
+    column_names = [primary_key] + list(filter(lambda col: '.' not in col, column_names))
+
+    if nested_column_names:
+        json_dict_schema = create_dict(nested_column_names)
+        root_col = nested_column_names[0].split('.')[0]
+        jsonb_object = build_pg_json_object(json_dict_schema[root_col], root_col)
+        column_names.append(jsonb_object + f" {root_col}")
+
+    sql_args = {
+        "table": Identifier(source_table).as_string(connection),
+        "columns": ", ".join(column_names),
+        "source": Identifier(temp_table).as_string(connection),
+        "target_schema": Identifier(target_schema).as_string(connection)
+    }
+
+    sql = ("""
+        DROP TABLE IF EXISTS {target_schema}.{table};
+        CREATE TABLE {target_schema}.{table} AS (SELECT {columns} FROM {source});
+        """).format(**sql_args)
+    cursor.execute(sql)
     cursor.close()
 
 
@@ -296,7 +402,7 @@ def get_column_name(definition, fully_qualified=False):
         return col_name.split('.', 2)[0]
 
 
-def get_column_names(definitions):
+def get_column_names(definitions, fully_qualified=False):
     """Get distinct column names from definitions
 
     :param list definitions: A list of table definitions from the YAML schema.
@@ -305,7 +411,7 @@ def get_column_names(definitions):
     """
     names = []
     for definition in definitions:
-        name = get_column_name(definition)
+        name = get_column_name(definition, fully_qualified)
         if name not in names:
             names.append(name)
     return names

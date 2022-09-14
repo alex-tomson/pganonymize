@@ -64,5 +64,4 @@ target/
 .vscode/
 
 # Dev files
-test_schema.yml
-test_schema2.yml
+test_schema*
