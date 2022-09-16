@@ -155,7 +155,7 @@ class TestImportData:
             }
         ]
 
-        anonymize_tables(connection, definitions, verbose=True)
+        anonymize_tables(connection, definitions, verbose=True, overwrite_values_in_source_tables=True)
         assert connection.cursor.call_count == mock_cursor.close.call_count
         assert copy_manager.call_args_list == [call(connection, 'tmp_auth_user', ['id', 'first_name', 'json_column'])]
         assert cmm.copy.call_count == 1
@@ -183,7 +183,10 @@ class TestBuildAndThenImport:
         connection = Mock()
         connection.cursor.return_value = mock_cursor
 
-        build_and_then_import_data(connection, table, primary_key, columns, None, None, total_count, chunk_size)
+        build_and_then_import_data(
+            connection, table, primary_key, columns, None, None, total_count, chunk_size,
+            overwrite_values_in_source_tables=True
+        )
 
         expected_execute_calls = [call('SELECT "id", "col1", "COL2" FROM "src_tbl"'),
                                   call(
@@ -248,6 +251,7 @@ class TestConfigLoader:
         [
             './tests/schemes/valid_schema.yml', {}, {
             "db": {
+                'overwrite_values_in_source_tables': True,
                 'tables': [
                     {
                         'auth_user': {

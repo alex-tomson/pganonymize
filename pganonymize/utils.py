@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time
+from typing import Optional
 
 import parmap
 import psycopg2
@@ -70,7 +71,7 @@ def build_pg_json_object(nested_obj: dict, root_col: str) -> str:
 
 
 def anonymize_tables(
-    connection, definitions, target_schema, verbose=False, dry_run=False, overwrite_values_in_source_tables=False
+    connection, definitions, target_schema=None, verbose=False, dry_run=False, overwrite_values_in_source_tables=False
 ):
     """
     Anonymize a list of tables according to the schema definition.
@@ -132,7 +133,7 @@ def build_and_then_import_data(
     search,
     total_count,
     chunk_size,
-    target_schema: str,
+    target_schema: Optional[str] = None,
     verbose=False,
     dry_run=False,
     overwrite_values_in_source_tables=False
