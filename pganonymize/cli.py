@@ -7,6 +7,7 @@ import logging
 import time
 
 from pganonymize.constants import DATABASE_ARGS, DEFAULT_SCHEMA_FILE
+from pganonymize.exceptions import BadSchemaFormat
 from pganonymize.providers import provider_registry
 from pganonymize.utils import anonymize_tables, create_database_dump, get_connection, load_config, truncate_tables
 
@@ -69,7 +70,12 @@ def main(args):
         connection = get_connection(pg_args)
 
         target_schema = tables.get("target_schema")
-        overwrite_values_in_source_tables = False if target_schema else tables.get("overwrite_values_in_source_tables", False)
+        overwrite_source = tables.get("overwrite_values_in_source_tables", False)
+        overwrite_values_in_source_tables = False if target_schema else overwrite_source
+        if not target_schema and not overwrite_source:
+            raise BadSchemaFormat(
+                "One of target_schema or overwrite_values_in_source_tables parameters must be defined!"
+            )
 
         switch_to_schema = f"SET search_path TO {schema_name};"
 
