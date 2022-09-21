@@ -9,7 +9,11 @@ from uuid import uuid4
 from faker import Faker
 
 from pganonymize.encrypting.encrypt_service import EncryptingService
-from pganonymize.exceptions import InvalidProvider, InvalidProviderArgument, ProviderAlreadyRegistered
+from pganonymize.exceptions import (
+    InvalidProvider,
+    InvalidProviderArgument,
+    ProviderAlreadyRegistered,
+)
 
 fake_data = Faker()
 
@@ -29,8 +33,11 @@ class ProviderRegistry(object):
         :raises ProviderAlreadyRegistered: If another provider with the given id has been registered
         """
         if provider_id in self._registry:
-            raise ProviderAlreadyRegistered('A provider with the id "{}" has already been registered'
-                                            .format(provider_id))
+            raise ProviderAlreadyRegistered(
+                'A provider with the id "{}" has already been registered'.format(
+                    provider_id
+                )
+            )
         self._registry[provider_id] = provider_class
 
     def get_provider(self, provider_id):
@@ -41,9 +48,14 @@ class ProviderRegistry(object):
         :raises InvalidProvider: If no provider can be found with the given id.
         """
         for key, cls in self._registry.items():
-            if (cls.regex_match is True and re.match(re.compile(key), provider_id) is not None) or key == provider_id:
+            if (
+                cls.regex_match is True
+                and re.match(re.compile(key), provider_id) is not None  # noqa
+            ) or key == provider_id:
                 return cls
-        raise InvalidProvider('Could not find provider with id "{}"'.format(provider_id))
+        raise InvalidProvider(
+            'Could not find provider with id "{}"'.format(provider_id)
+        )
 
     @property
     def providers(self):
@@ -67,10 +79,12 @@ def register(provider_id, **kwargs):
     :return: The decorator function
     :rtype: function
     """
+
     def wrapper(provider_class):
-        registry = kwargs.get('registry', provider_registry)
+        registry = kwargs.get("registry", provider_registry)
         registry.register(provider_class, provider_id)
         return provider_class
+
     return wrapper
 
 
@@ -92,15 +106,15 @@ class Provider(object):
         raise NotImplementedError()
 
 
-@register('choice')
+@register("choice")
 class ChoiceProvider(Provider):
     """Provider that returns a random value from a list of choices."""
 
     def alter_value(self, value):
-        return random.choice(self.kwargs.get('values'))
+        return random.choice(self.kwargs.get("values"))
 
 
-@register('clear')
+@register("clear")
 class ClearProvider(Provider):
     """Provider to set a field value to None."""
 
@@ -108,14 +122,14 @@ class ClearProvider(Provider):
         return None
 
 
-@register('fake.+')
+@register("fake.+")
 class FakeProvider(Provider):
     """Provider to generate fake data."""
 
     regex_match = True
 
     def alter_value(self, value):
-        func_name = self.kwargs['name'].split('.', 1)[1]
+        func_name = self.kwargs["name"].split(".", 1)[1]
         try:
             func = operator.attrgetter(func_name)(fake_data)
         except AttributeError as exc:
@@ -123,19 +137,19 @@ class FakeProvider(Provider):
         return func()
 
 
-@register('mask')
+@register("mask")
 class MaskProvider(Provider):
     """Provider that masks the original value."""
 
-    default_sign = 'X'
+    default_sign = "X"
     """The default string used to replace each character."""
 
     def alter_value(self, value):
-        sign = self.kwargs.get('sign', self.default_sign) or self.default_sign
+        sign = self.kwargs.get("sign", self.default_sign) or self.default_sign
         return sign * len(value)
 
 
-@register('md5')
+@register("md5")
 class MD5Provider(Provider):
     """Provider to hash a value with the md5 algorithm."""
 
@@ -143,54 +157,63 @@ class MD5Provider(Provider):
     """The default length used for the number representation."""
 
     def alter_value(self, value):
-        as_number = self.kwargs.get('as_number', False)
-        as_number_length = self.kwargs.get('as_number_length', self.default_max_length)
-        hashed = md5(value.encode('utf-8')).hexdigest()
+        as_number = self.kwargs.get("as_number", False)
+        as_number_length = self.kwargs.get(
+            "as_number_length", self.default_max_length
+        )
+        hashed = md5(value.encode("utf-8")).hexdigest()
         if as_number:
-            return int(hashed, 16) % (10 ** as_number_length)
+            return int(hashed, 16) % (10**as_number_length)
         else:
             return hashed
 
 
-@register('set')
+@register("set")
 class SetProvider(Provider):
     """Provider to set a static value."""
 
     def alter_value(self, value):
-        return self.kwargs.get('value')
+        return self.kwargs.get("value")
 
 
-@register('uuid4')
+@register("uuid4")
 class UUID4Provider(Provider):
     """Provider to set a random uuid value."""
 
     def alter_value(self, value):
         return uuid4()
 
-@register('pbkdf2')
+
+@register("pbkdf2")
 class PBKDF2Provider(Provider):
     """Provider to encrypt a value with the pbkdf2 algorithm."""
 
     def alter_value(self, value: str):
-        pbkdf2_passphrase: str = self.kwargs.get('secret', False)
+        pbkdf2_passphrase: str = self.kwargs.get("secret", False)
         if not pbkdf2_passphrase:
-            raise InvalidProviderArgument("attribute \"secret\" of pbkdf2 provider is not set")
-        if pbkdf2_passphrase == 'DA_SECRET_PHRASE':
-            raise InvalidProviderArgument("cannot find environment variable DA_SECRET_PHRASE "
-                                          "check your .env file")
+            raise InvalidProviderArgument(
+                'attribute "secret" of pbkdf2 provider is not set'
+            )
+        if pbkdf2_passphrase == "DA_SECRET_PHRASE":
+            raise InvalidProviderArgument(
+                "cannot find environment variable DA_SECRET_PHRASE "
+                "check your .env file"
+            )
 
         return EncryptingService(pbkdf2_passphrase).encrypt_function(value)
 
-@register('date_today')
+
+@register("date_today")
 class DatetimeProvider(Provider):
     """Provider to set current datetime value."""
 
     def alter_value(self, value: str):
         return datetime.now().date()
 
-@register('keep')
-class DatetimeProvider(Provider):
+
+@register("keep")
+class KeepProvider(Provider):
     """Provider to set value without changes."""
 
-    def alter_value(self, value: any):
+    def alter_value(self, value):
         return value
